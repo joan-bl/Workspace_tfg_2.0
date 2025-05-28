@@ -27,9 +27,9 @@ from tkinter import ttk
 class Config:
     """Configuración centralizada de la aplicación."""
     # Directorios base
-    BASE_DIR: str = r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg\histology_bone_analyzer\data\sample_results\detection_app"
-    TECHNICAL_DIR: str = r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg\histology_bone_analyzer\docs\technical"
-    RECONSTRUCTED_IMAGES_DIR: str = r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg\histology_bone_analyzer\data\sample_images"
+    BASE_DIR: str = r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg_2.0\histology_bone_analyzer\data\sample_results\detection_app"
+    TECHNICAL_DIR: str = r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg_2.0\histology_bone_analyzer\docs\technical"
+    RECONSTRUCTED_IMAGES_DIR: str = r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg_2.0\histology_bone_analyzer\data\sample_images"
     
     # Configuración de modelo
     MODEL_PATHS: List[str] = None
@@ -52,10 +52,8 @@ class Config:
     def __post_init__(self):
         if self.MODEL_PATHS is None:
             self.MODEL_PATHS = [
-                r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg\histology_bone_analyzer\models\weights.pt",
-                r"C:\Users\joanb\OneDrive\Escritorio\TFG\workspace\runs\detect\train\weights\weights.pt",
-                r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg\runs\detect\train13\weights\weights.pt",
-                r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg\osteona\weights.pt"
+                r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg_2.0\histology_bone_analyzer\models\weights.pt",
+                r"C:\Users\joanb\OneDrive\Escritorio\TFG\Workspace_tfg_2.0\workspace\runs\detect\train\weights\weights.pt"
             ]
         
         # Crear rutas derivadas
@@ -103,9 +101,12 @@ class MemoryManager:
     @staticmethod
     def get_memory_usage():
         """Obtiene el uso actual de memoria."""
-        import psutil
-        process = psutil.Process(os.getpid())
-        return process.memory_info().rss / 1024 / 1024  # MB
+        try:
+            import psutil
+            process = psutil.Process(os.getpid())
+            return process.memory_info().rss / 1024 / 1024  # MB
+        except ImportError:
+            return 0.0
 
 # ============================================================================
 # GESTIÓN DE DIRECTORIOS
@@ -200,15 +201,15 @@ class UIManager:
     @staticmethod
     def show_progress_dialog(parent: Tk, title: str = "Procesando..."):
         """Muestra una ventana de progreso moderna (versión corregida)."""
-        progress_window = tk.Toplevel()  # CAMBIO: No especificar parent inicialmente
+        progress_window = tk.Toplevel()
         progress_window.title(title)
         progress_window.geometry("400x150")
         progress_window.configure(bg=config.BACKGROUND_COLOR)
         progress_window.resizable(False, False)
         
-        # CAMBIO: Configurar relación con parent de forma segura
+        # Configurar relación con parent de forma segura
         try:
-            if parent and parent.winfo_exists():
+            if parent and hasattr(parent, 'winfo_exists') and parent.winfo_exists():
                 progress_window.transient(parent)
                 progress_window.grab_set()
                 
@@ -217,12 +218,22 @@ class UIManager:
                 x = parent.winfo_x() + (parent.winfo_width() // 2) - 200
                 y = parent.winfo_y() + (parent.winfo_height() // 2) - 75
                 progress_window.geometry(f"400x150+{x}+{y}")
-        except:
-            # Si hay problema con parent, centrar en pantalla
-            progress_window.update_idletasks()
-            x = (progress_window.winfo_screenwidth() // 2) - 200
-            y = (progress_window.winfo_screenheight() // 2) - 75
-            progress_window.geometry(f"400x150+{x}+{y}")
+            else:
+                # Si no hay parent válido, centrar en pantalla
+                progress_window.update_idletasks()
+                x = (progress_window.winfo_screenwidth() // 2) - 200
+                y = (progress_window.winfo_screenheight() // 2) - 75
+                progress_window.geometry(f"400x150+{x}+{y}")
+        except Exception as e:
+            logger.warning(f"Error configurando parent de ventana de progreso: {e}")
+            # Fallback: centrar en pantalla
+            try:
+                progress_window.update_idletasks()
+                x = (progress_window.winfo_screenwidth() // 2) - 200
+                y = (progress_window.winfo_screenheight() // 2) - 75
+                progress_window.geometry(f"400x150+{x}+{y}")
+            except:
+                pass
         
         # Contenido de la ventana
         tk.Label(progress_window, text=title, font=("Helvetica", 14, "bold"), 
@@ -528,17 +539,15 @@ class YOLOModelManager:
         return centers
     
     def _save_annotated_image(self, result, segment_id: int):
-        """Guarda la imagen con anotaciones."""
+        """Guarda la imagen con anotaciones ÚNICAMENTE en segmented_results."""
         try:
             annotated_img = result.plot()
             
-            # Guardar en directorio de resultados
+            # Guardar SOLO en directorio de resultados
             output_path = os.path.join(config.OUTPUT_DIR, f"result_{segment_id}.png")
             cv2.imwrite(output_path, annotated_img)
             
-            # Guardar copia en directorio de imágenes reconstruidas
-            reconstructed_path = os.path.join(config.RECONSTRUCTED_IMAGES_DIR, f"reconstructed_{segment_id}.png")
-            cv2.imwrite(reconstructed_path, annotated_img)
+            logger.debug(f"Imagen con detecciones guardada: {output_path}")
             
         except Exception as e:
             logger.error(f"Error guardando imagen anotada para segmento {segment_id}: {e}")
@@ -765,6 +774,7 @@ class DetectionApp:
         self.model_manager = YOLOModelManager()
         self.progress_window = None
         self.current_results = None
+        self._app_destroyed = False
         
     def initialize(self):
         """Inicializa la aplicación."""
@@ -775,6 +785,9 @@ class DetectionApp:
             # Crear ventana principal
             self.root = Tk()
             UIManager.configure_window(self.root, "Havers Analysis - Detection App")
+            
+            # Configurar protocolo de cierre
+            self.root.protocol("WM_DELETE_WINDOW", self._on_closing)
             
             # Cargar modelo
             if not self.model_manager.load_model():
@@ -788,8 +801,42 @@ class DetectionApp:
             logger.error(f"Error inicializando aplicación: {e}")
             return False
     
+    def _on_closing(self):
+        """Maneja el cierre de la aplicación de forma segura."""
+        try:
+            self._app_destroyed = True
+            if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
+                try:
+                    if self.progress_window.winfo_exists():
+                        self.progress_window.destroy()
+                except:
+                    pass
+            
+            if self.root and hasattr(self.root, 'winfo_exists'):
+                try:
+                    if self.root.winfo_exists():
+                        self.root.quit()
+                        self.root.destroy()
+                except:
+                    pass
+        except Exception as e:
+            logger.error(f"Error cerrando aplicación: {e}")
+    
+    def _is_app_valid(self) -> bool:
+        """Verifica si la aplicación sigue siendo válida."""
+        try:
+            return (not self._app_destroyed and 
+                    self.root and 
+                    hasattr(self.root, 'winfo_exists') and 
+                    self.root.winfo_exists())
+        except:
+            return False
+    
     def show_main_screen(self):
         """Muestra la pantalla principal mejorada."""
+        if not self._is_app_valid():
+            return
+            
         UIManager.clear_window(self.root)
         
         # Frame principal
@@ -840,6 +887,9 @@ class DetectionApp:
     
     def select_and_process_image(self):
         """Selecciona y procesa una imagen con interfaz mejorada."""
+        if not self._is_app_valid():
+            return
+            
         # Seleccionar archivo
         file_path = filedialog.askopenfilename(
             title="Seleccionar Imagen Histológica",
@@ -875,104 +925,141 @@ class DetectionApp:
     
     def process_image_with_progress(self, image_path: str):
         """Procesa la imagen con barra de progreso mejorada."""
+        if not self._is_app_valid():
+            return
+            
         try:
+            # Crear ventana de progreso con manejo de errores mejorado
             self.progress_window, progress_bar, status_label = UIManager.show_progress_dialog(
                 self.root, "Analizando Imagen Histológica"
             )
         except Exception as e:
             logger.error(f"Error creando ventana de progreso: {e}")
-            # Crear ventana de progreso simple sin parent
-            self.progress_window = tk.Toplevel()
-            self.progress_window.title("Analizando Imagen Histológica")
-            self.progress_window.geometry("400x150")
-            self.progress_window.configure(bg=config.BACKGROUND_COLOR)
+            self.progress_window = None
             
-            tk.Label(self.progress_window, text="Procesando imagen...", 
-                    fg=config.TEXT_COLOR, bg=config.BACKGROUND_COLOR).pack(pady=50)
-            
-            progress_bar = ttk.Progressbar(self.progress_window, mode='indeterminate')
-            progress_bar.pack(pady=10)
-            progress_bar.start()
-            
-            status_label = tk.Label(self.progress_window, text="Iniciando...", 
-                                fg=config.TEXT_COLOR, bg=config.BACKGROUND_COLOR)
-            status_label.pack(pady=5)
-            
-            # Función de procesamiento en hilo separado
-            def process_in_background():
-                try:
-                    # Paso 1: Validar y redimensionar
-                    status_label.config(text="Validando y preparando imagen...")
-                    self.progress_window.update()
-                    
-                    processed_path = ImageProcessor.resize_image_if_needed(image_path)
-                    
-                    # Paso 2: Segmentar imagen
-                    status_label.config(text="Dividiendo imagen en segmentos...")
-                    self.progress_window.update()
-                    
-                    segment_positions, width, height = ImageProcessor.divide_image_optimized(processed_path)
-                    
-                    # Paso 3: Procesar con YOLO
-                    status_label.config(text="Ejecutando análisis con IA...")
-                    self.progress_window.update()
-                    
-                    detections = self.model_manager.process_segments_batch(segment_positions)
-                    
-                    if not detections:
-                        raise ValueError("No se detectaron canales de Havers en la imagen")
-                    
-                    # Paso 4: Guardar datos
-                    status_label.config(text="Guardando resultados...")
-                    self.progress_window.update()
-                    
-                    excel_path, df = DataManager.save_results_to_excel_enhanced(detections)
-                    
-                    # Paso 5: Generar visualizaciones
-                    status_label.config(text="Generando visualizaciones...")
-                    self.progress_window.update()
-                    
-                    viz_results = DataAnalyzer.generate_visualization_optimized(df, processed_path)
-                    
-                    # Combinar resultados
-                    self.current_results = {
-                        'excel_path': excel_path,
-                        'processed_image_path': processed_path,
-                        'original_image_path': image_path,
-                        'dataframe': df,
-                        **viz_results
-                    }
-                    
-                    # Cerrar ventana de progreso
-                    self.progress_window.destroy()
-                    
-                    # Mostrar resultados
-                    self.show_results_screen()
-                    
-                except Exception as e:
-                    if self.progress_window:
-                        self.progress_window.destroy()
-                    logger.error(f"Error en procesamiento: {e}")
-                    messagebox.showerror("Error de Procesamiento", 
-                                       f"Ocurrió un error durante el análisis:\n{str(e)}")
-                    self.show_main_screen()
-            
-            # Ejecutar en hilo separado para no bloquear la UI
-            import threading
-            thread = threading.Thread(target=process_in_background)
-            thread.daemon = True
-            thread.start()
-            
-        except Exception as e:
-            if self.progress_window:
-                self.progress_window.destroy()
-            logger.error(f"Error iniciando procesamiento: {e}")
-            messagebox.showerror("Error", f"No se pudo iniciar el procesamiento: {e}")
+        # Función de procesamiento en hilo separado
+        def process_in_background():
+            try:
+                # Verificar que la aplicación sigue válida
+                if not self._is_app_valid():
+                    return
+                
+                # Paso 1: Validar y redimensionar
+                if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
+                    try:
+                        if self.progress_window.winfo_exists():
+                            status_label.config(text="Validando y preparando imagen...")
+                            self.progress_window.update()
+                    except:
+                        pass
+                
+                processed_path = ImageProcessor.resize_image_if_needed(image_path)
+                
+                # Paso 2: Segmentar imagen
+                if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
+                    try:
+                        if self.progress_window.winfo_exists():
+                            status_label.config(text="Dividiendo imagen en segmentos...")
+                            self.progress_window.update()
+                    except:
+                        pass
+                
+                segment_positions, width, height = ImageProcessor.divide_image_optimized(processed_path)
+                
+                # Paso 3: Procesar con YOLO
+                if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
+                    try:
+                        if self.progress_window.winfo_exists():
+                            status_label.config(text="Ejecutando análisis con IA...")
+                            self.progress_window.update()
+                    except:
+                        pass
+                
+                detections = self.model_manager.process_segments_batch(segment_positions)
+                
+                if not detections:
+                    raise ValueError("No se detectaron canales de Havers en la imagen")
+                
+                # Paso 4: Guardar datos
+                if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
+                    try:
+                        if self.progress_window.winfo_exists():
+                            status_label.config(text="Guardando resultados...")
+                            self.progress_window.update()
+                    except:
+                        pass
+                
+                excel_path, df = DataManager.save_results_to_excel_enhanced(detections)
+                
+                # Paso 5: Generar visualizaciones
+                if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
+                    try:
+                        if self.progress_window.winfo_exists():
+                            status_label.config(text="Generando visualizaciones...")
+                            self.progress_window.update()
+                    except:
+                        pass
+                
+                viz_results = DataAnalyzer.generate_visualization_optimized(df, processed_path)
+                
+                # Combinar resultados
+                self.current_results = {
+                    'excel_path': excel_path,
+                    'processed_image_path': processed_path,
+                    'original_image_path': image_path,
+                    'dataframe': df,
+                    **viz_results
+                }
+                
+                # Cerrar ventana de progreso de forma segura
+                if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
+                    try:
+                        if self.progress_window.winfo_exists():
+                            self.progress_window.destroy()
+                    except:
+                        pass
+                    finally:
+                        self.progress_window = None
+                
+                # Mostrar resultados solo si la aplicación sigue válida
+                if self._is_app_valid():
+                    self.root.after(100, self.show_results_screen)
+                
+            except Exception as e:
+                # Cerrar ventana de progreso en caso de error
+                if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
+                    try:
+                        if self.progress_window.winfo_exists():
+                            self.progress_window.destroy()
+                    except:
+                        pass
+                    finally:
+                        self.progress_window = None
+                
+                logger.error(f"Error en procesamiento: {e}")
+                
+                # Mostrar error solo si la aplicación sigue válida
+                if self._is_app_valid():
+                    self.root.after(100, lambda: self._show_error_and_return(str(e)))
+        
+        # Ejecutar en hilo separado para no bloquear la UI
+        import threading
+        thread = threading.Thread(target=process_in_background)
+        thread.daemon = True
+        thread.start()
+    
+    def _show_error_and_return(self, error_msg: str):
+        """Muestra error y vuelve a la pantalla principal."""
+        if self._is_app_valid():
+            messagebox.showerror("Error de Procesamiento", 
+                               f"Ocurrió un error durante el análisis:\n{error_msg}")
+            self.show_main_screen()
     
     def show_results_screen(self):
         """Muestra los resultados con interfaz mejorada."""
-        if not self.current_results:
-            messagebox.showwarning("Sin Resultados", "No hay resultados para mostrar.")
+        if not self._is_app_valid() or not self.current_results:
+            if self._is_app_valid():
+                messagebox.showwarning("Sin Resultados", "No hay resultados para mostrar.")
             return
         
         UIManager.clear_window(self.root)
@@ -1212,19 +1299,14 @@ Modelo utilizado: {os.path.basename(self.model_manager.model_path)}
         
         try:
             self.show_main_screen()
-            # CAMBIO: Agregar verificación antes de mainloop
-            if self.root and self.root.winfo_exists():
+            if self._is_app_valid():
                 self.root.mainloop()
         except Exception as e:
             logger.error(f"Error ejecutando aplicación: {e}")
-            messagebox.showerror("Error Fatal", f"Error inesperado: {e}")
+            if self._is_app_valid():
+                messagebox.showerror("Error Fatal", f"Error inesperado: {e}")
         finally:
-            # CAMBIO: Verificar si la ventana existe antes de destruirla
-            if hasattr(self, 'root') and self.root and self.root.winfo_exists():
-                try:
-                    self.root.destroy()
-                except:
-                    pass  # Ignorar errores al cerrar
+            self._on_closing()
 
 # ============================================================================
 # FUNCIÓN MAIN MEJORADA
@@ -1260,14 +1342,12 @@ def main():
         except:
             pass
     finally:
-        # CAMBIO: Limpiar recursos de forma segura
-        if app and hasattr(app, 'root') and app.root:
+        # Limpiar recursos de forma segura
+        if app and hasattr(app, '_on_closing'):
             try:
-                if app.root.winfo_exists():
-                    app.root.destroy()
+                app._on_closing()
             except:
                 pass
 
 if __name__ == '__main__':
     main()
-            
