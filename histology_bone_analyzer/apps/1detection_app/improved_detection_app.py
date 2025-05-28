@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 from concurrent.futures import ThreadPoolExecutor
 import gc
 import time
+import tkinter as tk
+from tkinter import ttk
 
 # ============================================================================
 # CONFIGURACIÓN GLOBAL Y CONSTANTES
@@ -197,27 +199,41 @@ class UIManager:
     
     @staticmethod
     def show_progress_dialog(parent: Tk, title: str = "Procesando..."):
-        """Muestra una ventana de progreso moderna."""
-        progress_window = Tk()
+        """Muestra una ventana de progreso moderna (versión corregida)."""
+        progress_window = tk.Toplevel()  # CAMBIO: No especificar parent inicialmente
         progress_window.title(title)
         progress_window.geometry("400x150")
         progress_window.configure(bg=config.BACKGROUND_COLOR)
         progress_window.resizable(False, False)
         
-        # Centrar ventana
-        progress_window.transient(parent)
-        progress_window.grab_set()
+        # CAMBIO: Configurar relación con parent de forma segura
+        try:
+            if parent and parent.winfo_exists():
+                progress_window.transient(parent)
+                progress_window.grab_set()
+                
+                # Centrar respecto al parent
+                parent.update_idletasks()
+                x = parent.winfo_x() + (parent.winfo_width() // 2) - 200
+                y = parent.winfo_y() + (parent.winfo_height() // 2) - 75
+                progress_window.geometry(f"400x150+{x}+{y}")
+        except:
+            # Si hay problema con parent, centrar en pantalla
+            progress_window.update_idletasks()
+            x = (progress_window.winfo_screenwidth() // 2) - 200
+            y = (progress_window.winfo_screenheight() // 2) - 75
+            progress_window.geometry(f"400x150+{x}+{y}")
         
-        # Contenido
-        Label(progress_window, text=title, font=("Helvetica", 14, "bold"), 
-              fg=config.TEXT_COLOR, bg=config.BACKGROUND_COLOR).pack(pady=20)
+        # Contenido de la ventana
+        tk.Label(progress_window, text=title, font=("Helvetica", 14, "bold"), 
+            fg=config.TEXT_COLOR, bg=config.BACKGROUND_COLOR).pack(pady=20)
         
         progress_bar = ttk.Progressbar(progress_window, mode='indeterminate', length=300)
         progress_bar.pack(pady=10)
         progress_bar.start()
         
-        status_label = Label(progress_window, text="Iniciando...", font=("Helvetica", 10), 
-                           fg=config.TEXT_COLOR, bg=config.BACKGROUND_COLOR)
+        status_label = tk.Label(progress_window, text="Iniciando...", font=("Helvetica", 10), 
+                        fg=config.TEXT_COLOR, bg=config.BACKGROUND_COLOR)
         status_label.pack(pady=5)
         
         progress_window.update()
@@ -860,10 +876,27 @@ class DetectionApp:
     def process_image_with_progress(self, image_path: str):
         """Procesa la imagen con barra de progreso mejorada."""
         try:
-            # Mostrar ventana de progreso
             self.progress_window, progress_bar, status_label = UIManager.show_progress_dialog(
                 self.root, "Analizando Imagen Histológica"
             )
+        except Exception as e:
+            logger.error(f"Error creando ventana de progreso: {e}")
+            # Crear ventana de progreso simple sin parent
+            self.progress_window = tk.Toplevel()
+            self.progress_window.title("Analizando Imagen Histológica")
+            self.progress_window.geometry("400x150")
+            self.progress_window.configure(bg=config.BACKGROUND_COLOR)
+            
+            tk.Label(self.progress_window, text="Procesando imagen...", 
+                    fg=config.TEXT_COLOR, bg=config.BACKGROUND_COLOR).pack(pady=50)
+            
+            progress_bar = ttk.Progressbar(self.progress_window, mode='indeterminate')
+            progress_bar.pack(pady=10)
+            progress_bar.start()
+            
+            status_label = tk.Label(self.progress_window, text="Iniciando...", 
+                                fg=config.TEXT_COLOR, bg=config.BACKGROUND_COLOR)
+            status_label.pack(pady=5)
             
             # Función de procesamiento en hilo separado
             def process_in_background():
