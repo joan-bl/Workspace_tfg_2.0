@@ -1,5 +1,5 @@
-import cv2
 import os
+import cv2
 import shutil
 import pandas as pd
 import numpy as np
@@ -200,7 +200,7 @@ class UIManager:
     
     @staticmethod
     def show_progress_dialog(parent: Tk, title: str = "Procesando..."):
-        """Muestra una ventana de progreso moderna (versión corregida)."""
+        """Muestra una ventana de progreso moderna."""
         progress_window = tk.Toplevel()
         progress_window.title(title)
         progress_window.geometry("400x150")
@@ -451,10 +451,12 @@ class YOLOModelManager:
             logger.error(f"Error cargando modelo: {e}")
             return False
     
-    def process_segments_batch(self, segment_positions: List[Tuple], 
-                              confidence_threshold: float = None,
-                              batch_size: int = 4) -> List[Tuple]:
-        """Procesa segmentos en lotes para mayor eficiencia."""
+    def process_all_segments_sequentially(self, segment_positions: List[Tuple], 
+                                        confidence_threshold: float = None) -> List[Tuple]:
+        """
+        FUNCIÓN CLAVE: Procesa TODOS los segmentos uno por uno en orden secuencial
+        para asegurar que no se pierda ninguno.
+        """
         if confidence_threshold is None:
             confidence_threshold = config.CONFIDENCE_THRESHOLD
         
@@ -464,53 +466,83 @@ class YOLOModelManager:
         box_centers_and_areas = []
         total_segments = len(segment_positions)
         
-        logger.info(f"Procesando {total_segments} segmentos en lotes de {batch_size}")
+        logger.info(f"🔄 PROCESAMIENTO SECUENCIAL: {total_segments} segmentos")
         
-        # Procesar en lotes
-        for i in range(0, total_segments, batch_size):
-            batch_end = min(i + batch_size, total_segments)
-            batch_positions = segment_positions[i:batch_end]
+        # Ordenar por segment_id para mantener orden
+        sorted_positions = sorted(segment_positions, key=lambda x: x[2])
+        
+        # Procesar cada segmento individualmente
+        for i, (start_x, start_y, segment_id) in enumerate(sorted_positions):
+            segment_path = os.path.join(config.IMAGES_SEGMENTED_DIR, f"segment_{segment_id}.png")
             
-            batch_paths = []
-            valid_positions = []
-            
-            # Preparar rutas del lote
-            for start_x, start_y, segment_id in batch_positions:
-                segment_path = os.path.join(config.IMAGES_SEGMENTED_DIR, f"segment_{segment_id}.png")
-                if os.path.exists(segment_path):
-                    batch_paths.append(segment_path)
-                    valid_positions.append((start_x, start_y, segment_id))
-            
-            if not batch_paths:
+            if not os.path.exists(segment_path):
+                logger.warning(f"⚠️ Segmento {segment_id} no encontrado: {segment_path}")
+                # Crear imagen vacía para mantener secuencia
+                self._create_empty_result_image(segment_id)
                 continue
             
             try:
-                # Procesar lote con YOLO
-                results = self.model(batch_paths, conf=confidence_threshold, verbose=False)
+                # Procesar segmento individual con YOLO
+                results = self.model([segment_path], conf=confidence_threshold, verbose=False)
+                result = results[0]  # Solo un resultado
                 
-                # Procesar resultados
-                for j, result in enumerate(results):
-                    start_x, start_y, segment_id = valid_positions[j]
-                    boxes = result.boxes
-                    
-                    if boxes is not None and len(boxes) > 0:
-                        centers = self._calculate_centers_and_areas(boxes, start_x, start_y, segment_id)
-                        box_centers_and_areas.extend(centers)
-                        
-                        # Guardar imagen con anotaciones
-                        self._save_annotated_image(result, segment_id)
-                    
-                    logger.debug(f"Segmento {segment_id}: {len(boxes) if boxes else 0} detecciones")
+                boxes = result.boxes
+                detection_count = 0
                 
-                # Limpiar memoria después de cada lote
-                MemoryManager.clear_cache()
+                # Procesar detecciones si existen
+                if boxes is not None and len(boxes) > 0:
+                    centers = self._calculate_centers_and_areas(boxes, start_x, start_y, segment_id)
+                    box_centers_and_areas.extend(centers)
+                    detection_count = len(boxes)
+                
+                # CRÍTICO: Guardar imagen SIEMPRE (con o sin detecciones)
+                self._save_annotated_image(result, segment_id)
+                
+                logger.info(f"✅ Segmento {segment_id:03d}/{total_segments}: {detection_count} detecciones - Imagen guardada")
+                
+                # Limpiar memoria cada 10 segmentos
+                if i % 10 == 0:
+                    MemoryManager.clear_cache()
                 
             except Exception as e:
-                logger.error(f"Error procesando lote {i//batch_size + 1}: {e}")
+                logger.error(f"❌ Error procesando segmento {segment_id}: {e}")
+                # Crear imagen vacía para mantener secuencia
+                self._create_empty_result_image(segment_id)
                 continue
         
-        logger.info(f"Procesamiento completado: {len(box_centers_and_areas)} detecciones totales")
+        # Verificación final
+        saved_count = self._count_saved_results()
+        logger.info(f"📊 RESUMEN: {len(box_centers_and_areas)} detecciones totales")
+        logger.info(f"📁 Imágenes guardadas: {saved_count} de {total_segments}")
+        
+        if saved_count != total_segments:
+            logger.warning(f"⚠️ FALTAN {total_segments - saved_count} IMÁGENES!")
+        else:
+            logger.info("✅ TODAS LAS IMÁGENES GUARDADAS CORRECTAMENTE")
+        
         return box_centers_and_areas
+    
+    def _create_empty_result_image(self, segment_id: int):
+        """Crea una imagen vacía cuando un segmento falla para mantener la secuencia."""
+        try:
+            # Crear imagen negra de tamaño estándar
+            empty_img = np.zeros((948, 1258, 3), dtype=np.uint8)
+            
+            # Añadir texto indicando que no hay datos
+            cv2.putText(empty_img, f"Segment {segment_id}", (50, 50), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            cv2.putText(empty_img, "No data", (50, 100), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            
+            # Guardar con numeración correcta
+            padded_id = str(segment_id).zfill(3)
+            output_path = os.path.join(config.OUTPUT_DIR, f"result_{padded_id}.png")
+            cv2.imwrite(output_path, empty_img)
+            
+            logger.info(f"🖼️ Imagen vacía creada para segmento {segment_id}")
+            
+        except Exception as e:
+            logger.error(f"Error creando imagen vacía para segmento {segment_id}: {e}")
     
     def _calculate_centers_and_areas(self, boxes, start_x: int, start_y: int, segment_id: int) -> List[Tuple]:
         """Calcula centros y áreas de las detecciones."""
@@ -539,18 +571,38 @@ class YOLOModelManager:
         return centers
     
     def _save_annotated_image(self, result, segment_id: int):
-        """Guarda la imagen con anotaciones ÚNICAMENTE en segmented_results."""
+        """Guarda la imagen con anotaciones usando numeración con padding."""
         try:
             annotated_img = result.plot()
             
-            # Guardar SOLO en directorio de resultados
-            output_path = os.path.join(config.OUTPUT_DIR, f"result_{segment_id}.png")
-            cv2.imwrite(output_path, annotated_img)
+            # Usar padding de 3 dígitos para orden correcto
+            padded_id = str(segment_id).zfill(3)
+            output_path = os.path.join(config.OUTPUT_DIR, f"result_{padded_id}.png")
             
-            logger.debug(f"Imagen con detecciones guardada: {output_path}")
+            # Asegurar que el directorio existe
+            os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+            
+            # Guardar imagen
+            success = cv2.imwrite(output_path, annotated_img)
+            
+            if not success:
+                logger.error(f"❌ Falló el guardado de result_{padded_id}.png")
             
         except Exception as e:
             logger.error(f"Error guardando imagen anotada para segmento {segment_id}: {e}")
+    
+    def _count_saved_results(self) -> int:
+        """Cuenta cuántas imágenes result_XXX.png existen en segmented_results."""
+        try:
+            if not os.path.exists(config.OUTPUT_DIR):
+                return 0
+            
+            result_files = [f for f in os.listdir(config.OUTPUT_DIR) 
+                          if f.startswith('result_') and f.endswith('.png')]
+            return len(result_files)
+        except Exception as e:
+            logger.error(f"Error contando archivos de resultados: {e}")
+            return 0
 
 # ============================================================================
 # ANÁLISIS Y VISUALIZACIÓN OPTIMIZADOS
@@ -966,19 +1018,21 @@ class DetectionApp:
                 
                 segment_positions, width, height = ImageProcessor.divide_image_optimized(processed_path)
                 
-                # Paso 3: Procesar con YOLO
+                # Paso 3: Procesar con YOLO - USANDO LA NUEVA FUNCIÓN SECUENCIAL
                 if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
                     try:
                         if self.progress_window.winfo_exists():
-                            status_label.config(text="Ejecutando análisis con IA...")
+                            status_label.config(text="Ejecutando análisis con IA (secuencial)...")
                             self.progress_window.update()
                     except:
                         pass
                 
-                detections = self.model_manager.process_segments_batch(segment_positions)
+                # CAMBIO CLAVE: Usar el nuevo método secuencial
+                detections = self.model_manager.process_all_segments_sequentially(segment_positions)
                 
                 if not detections:
-                    raise ValueError("No se detectaron canales de Havers en la imagen")
+                    logger.warning("No se detectaron canales de Havers en la imagen")
+                    # No lanzar error, puede ser normal
                 
                 # Paso 4: Guardar datos
                 if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
@@ -989,9 +1043,14 @@ class DetectionApp:
                     except:
                         pass
                 
-                excel_path, df = DataManager.save_results_to_excel_enhanced(detections)
+                if detections:
+                    excel_path, df = DataManager.save_results_to_excel_enhanced(detections)
+                else:
+                    # Crear DataFrame vacío para casos sin detecciones
+                    df = pd.DataFrame(columns=['Center X', 'Center Y', 'Segment ID', 'Ellipse Area (pixels^2)'])
+                    excel_path = None
                 
-                # Paso 5: Generar visualizaciones
+                # Paso 5: Generar visualizaciones (solo si hay detecciones)
                 if self.progress_window and hasattr(self.progress_window, 'winfo_exists'):
                     try:
                         if self.progress_window.winfo_exists():
@@ -1000,7 +1059,20 @@ class DetectionApp:
                     except:
                         pass
                 
-                viz_results = DataAnalyzer.generate_visualization_optimized(df, processed_path)
+                if len(df) > 0:
+                    viz_results = DataAnalyzer.generate_visualization_optimized(df, processed_path)
+                else:
+                    viz_results = {
+                        'plot_path': None,
+                        'heatmap_path': None,
+                        'avg_area': 0,
+                        'median_area': 0,
+                        'std_area': 0,
+                        'min_area': 0,
+                        'max_area': 0,
+                        'count': 0,
+                        'avg_distance': 0
+                    }
                 
                 # Combinar resultados
                 self.current_results = {
@@ -1115,9 +1187,13 @@ class DetectionApp:
         file_info = f"""
         📁 Archivo Original: {os.path.basename(results['original_image_path'])}
         💾 Tamaño Procesado: {os.path.getsize(results['processed_image_path']) / (1024*1024):.1f} MB
-        📊 Excel Generado: {os.path.basename(results['excel_path'])}
-        🎯 Rango de Áreas: {results['min_area']:.1f} - {results['max_area']:.1f} px²
         """
+        
+        if results.get('excel_path'):
+            file_info += f"\n📊 Excel Generado: {os.path.basename(results['excel_path'])}"
+        
+        if results['count'] > 0:
+            file_info += f"\n🎯 Rango de Áreas: {results['min_area']:.1f} - {results['max_area']:.1f} px²"
         
         info_label = Label(summary_frame, text=file_info, 
                           font=("Helvetica", 11), 
@@ -1181,6 +1257,14 @@ class DetectionApp:
 ESTADÍSTICAS DESCRIPTIVAS
 -------------------------
 """
+        
+        if len(df) == 0:
+            report += "\nNo se detectaron canales de Havers en esta imagen.\n"
+            report += "Esto puede deberse a:\n"
+            report += "- Imagen sin microestructuras visibles\n"
+            report += "- Umbral de confianza demasiado alto\n"
+            report += "- Calidad de imagen insuficiente\n"
+            return report
         
         # Estadísticas básicas
         area_stats = df['Ellipse Area (pixels^2)'].describe()
@@ -1258,14 +1342,24 @@ Modelo utilizado: {os.path.basename(self.model_manager.model_path)}
         button_frame = Frame(actions_frame, bg=config.BACKGROUND_COLOR)
         button_frame.pack(expand=True)
         
-        buttons = [
-            ("📊 Abrir Excel con Datos", lambda: self._open_file(self.current_results['excel_path'])),
-            ("🗺️ Ver Mapa de Coordenadas", lambda: self._open_file(self.current_results['plot_path'])),
-            ("🔥 Ver Mapa de Calor", lambda: self._open_file(self.current_results['heatmap_path'])),
-            ("📁 Abrir Carpeta de Resultados", lambda: self._open_file(config.RESULTS_DIR)),
-            ("💾 Exportar Reporte PDF", self._export_pdf_report),
+        buttons = []
+        
+        # Botones condicionalmente disponibles
+        if self.current_results.get('excel_path'):
+            buttons.append(("📊 Abrir Excel con Datos", lambda: self._open_file(self.current_results['excel_path'])))
+        
+        if self.current_results.get('plot_path'):
+            buttons.append(("🗺️ Ver Mapa de Coordenadas", lambda: self._open_file(self.current_results['plot_path'])))
+        
+        if self.current_results.get('heatmap_path'):
+            buttons.append(("🔥 Ver Mapa de Calor", lambda: self._open_file(self.current_results['heatmap_path'])))
+        
+        # Botones siempre disponibles
+        buttons.extend([
+            ("📁 Abrir Carpeta de Resultados", lambda: self._open_file(config.OUTPUT_DIR)),
+            ("🖼️ Ver Imágenes Segmentadas", lambda: self._open_file(config.OUTPUT_DIR)),
             ("🔄 Procesar Nueva Imagen", self.select_and_process_image)
-        ]
+        ])
         
         for i, (text, command) in enumerate(buttons):
             btn = Button(button_frame, text=text, command=command)
@@ -1281,16 +1375,24 @@ Modelo utilizado: {os.path.basename(self.model_manager.model_path)}
                 else:  # Linux/macOS
                     import subprocess
                     subprocess.call(['xdg-open', file_path])
+        except Exception as e:
+            logger.error(f"Error abriendo archivo {file_path}: {e}")
+            messagebox.showerror("Error", f"No se pudo abrir el archivo: {e}")
+
+    def _open_file(self, file_path: str):
+        """Abre un archivo con la aplicación predeterminada."""
+        try:
+            if os.path.exists(file_path):
+                if os.name == 'nt':  # Windows
+                    os.startfile(file_path)
+                else:  # Linux/macOS
+                    import subprocess
+                    subprocess.call(['xdg-open', file_path])
             else:
                 messagebox.showerror("Error", f"Archivo no encontrado: {file_path}")
         except Exception as e:
             logger.error(f"Error abriendo archivo {file_path}: {e}")
             messagebox.showerror("Error", f"No se pudo abrir el archivo: {e}")
-    
-    def _export_pdf_report(self):
-        """Exporta un reporte en PDF (función placeholder)."""
-        messagebox.showinfo("Próximamente", 
-                           "La exportación a PDF estará disponible en una futura actualización.")
     
     def run(self):
         """Ejecuta la aplicación principal."""
