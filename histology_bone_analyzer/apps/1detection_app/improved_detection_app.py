@@ -1179,13 +1179,19 @@ Modelo utilizado: {os.path.basename(self.model_manager.model_path)}
         
         try:
             self.show_main_screen()
-            self.root.mainloop()
+            # CAMBIO: Agregar verificación antes de mainloop
+            if self.root and self.root.winfo_exists():
+                self.root.mainloop()
         except Exception as e:
             logger.error(f"Error ejecutando aplicación: {e}")
             messagebox.showerror("Error Fatal", f"Error inesperado: {e}")
         finally:
-            if self.root:
-                self.root.destroy()
+            # CAMBIO: Verificar si la ventana existe antes de destruirla
+            if hasattr(self, 'root') and self.root and self.root.winfo_exists():
+                try:
+                    self.root.destroy()
+                except:
+                    pass  # Ignorar errores al cerrar
 
 # ============================================================================
 # FUNCIÓN MAIN MEJORADA
@@ -1193,6 +1199,7 @@ Modelo utilizado: {os.path.basename(self.model_manager.model_path)}
 
 def main():
     """Función principal del programa mejorada."""
+    app = None
     try:
         # Verificar dependencias críticas
         if not torch.cuda.is_available():
@@ -1216,8 +1223,17 @@ def main():
             messagebox.showerror("Error Fatal", 
                                f"La aplicación encontró un error fatal:\n{e}\n\n"
                                f"Consulta el archivo de log para más detalles.")
+            root.destroy()
         except:
             pass
+    finally:
+        # CAMBIO: Limpiar recursos de forma segura
+        if app and hasattr(app, 'root') and app.root:
+            try:
+                if app.root.winfo_exists():
+                    app.root.destroy()
+            except:
+                pass
 
 if __name__ == '__main__':
     main()
