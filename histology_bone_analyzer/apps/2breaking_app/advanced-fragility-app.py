@@ -10,6 +10,8 @@ import seaborn as sns
 from PIL import Image, ImageTk
 import os
 from datetime import datetime
+from pathlib import Path
+import logging
 
 class AdvancedBoneFragilityAnalyzer:
     def __init__(self, root):
@@ -17,6 +19,12 @@ class AdvancedBoneFragilityAnalyzer:
         self.root.title("Havers Analisis - Advanced Fragility Assessment")
         self.root.configure(bg='#000000')
         self.root.geometry("1400x900")
+        
+        # SOLUCIÓN 1: Configurar el cierre correcto de la aplicación
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Configurar directorios usando rutas relativas
+        self.setup_directories()
         
         # Variables para datos
         self.imagen_original = None
@@ -34,6 +42,38 @@ class AdvancedBoneFragilityAnalyzer:
         }
         
         self.setup_ui()
+    
+    def on_closing(self):
+        """SOLUCIÓN 1: Maneja el cierre correcto de la aplicación"""
+        try:
+            self.root.quit()
+            self.root.destroy()
+        except:
+            pass
+        
+    def setup_directories(self):
+        """Configura los directorios del proyecto de forma consistente."""
+        try:
+            # Detectar la ruta base del proyecto (ahora Workspace_tfg_2.0)
+            current_dir = Path(__file__).parent
+            project_root = current_dir.parent.parent
+            
+            # Todo va directamente a breaking_app/ (sin subcarpetas)
+            self.base_dir = project_root / "data" / "sample_results" / "breaking_app"
+            self.results_dir = self.base_dir  # Mismo directorio, sin subcarpeta
+            
+            # Crear directorio si no existe
+            self.base_dir.mkdir(parents=True, exist_ok=True)
+            
+            logging.info(f"Directorio configurado: {self.base_dir}")
+            
+        except Exception as e:
+            logging.error(f"Error configurando directorios: {e}")
+            # Fallback a directorio actual
+            self.base_dir = Path.cwd() / "breaking_app_results"
+            self.results_dir = self.base_dir
+            
+            self.base_dir.mkdir(exist_ok=True)
         
     def setup_ui(self):
         """Configura la interfaz de usuario"""
@@ -48,7 +88,7 @@ class AdvancedBoneFragilityAnalyzer:
                               fg='white', bg='#000000')
         title_label.pack(pady=(0, 20))
         
-        # Notebook para pestañas
+        # Notebook para pestañas (SOLUCIÓN 4: Solo 3 pestañas ahora)
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
         
@@ -58,9 +98,8 @@ class AdvancedBoneFragilityAnalyzer:
         style.configure('TNotebook', background='#000000')
         style.configure('TNotebook.Tab', background='#333333', foreground='white')
         
-        # Crear pestañas
+        # Crear pestañas (eliminamos la pestaña de análisis)
         self.setup_config_tab()
-        self.setup_analysis_tab()
         self.setup_visualization_tab()
         self.setup_results_tab()
         
@@ -117,53 +156,48 @@ class AdvancedBoneFragilityAnalyzer:
                            font=("Helvetica", 12), height=2)
         load_btn.pack(fill=tk.X, pady=10)
         
-    def setup_analysis_tab(self):
-        """Configura la pestaña de análisis"""
-        analysis_frame = tk.Frame(self.notebook, bg='#000000')
-        self.notebook.add(analysis_frame, text="Análisis")
-        
-        # Botón de análisis
-        analyze_btn = tk.Button(analysis_frame, text="Ejecutar Análisis Avanzado",
+        # SOLUCIÓN 4: Botón de análisis movido aquí desde la pestaña eliminada
+        analyze_btn = tk.Button(load_frame, text="Ejecutar Análisis Avanzado",
                               command=self.ejecutar_analisis_avanzado,
                               bg='#BD0000', fg='white', font=("Helvetica", 14),
                               height=3)
-        analyze_btn.pack(pady=50)
+        analyze_btn.pack(fill=tk.X, pady=10)
         
         # Frame para mostrar progreso
-        self.progress_frame = tk.Frame(analysis_frame, bg='#000000')
-        self.progress_frame.pack(fill=tk.X, padx=20, pady=20)
+        self.progress_frame = tk.Frame(config_frame, bg='#000000')
+        self.progress_frame.pack(fill=tk.X, padx=20, pady=10)
         
         self.progress_label = tk.Label(self.progress_frame, text="",
                                      fg='white', bg='#000000', font=("Helvetica", 12))
         self.progress_label.pack()
-        
+
     def setup_visualization_tab(self):
         """Configura la pestaña de visualización"""
         viz_frame = tk.Frame(self.notebook, bg='#000000')
         self.notebook.add(viz_frame, text="Visualización")
         
-        # Frame para canvas de matplotlib
-        self.viz_canvas_frame = tk.Frame(viz_frame, bg='#000000')
-        self.viz_canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # SOLUCIÓN 2: Botones FUERA del canvas para que siempre estén visibles
+        self.viz_controls = tk.Frame(viz_frame, bg='#000000')
+        self.viz_controls.pack(fill=tk.X, padx=20, pady=10)
         
-        # Botones de visualización
-        viz_controls = tk.Frame(viz_frame, bg='#000000')
-        viz_controls.pack(fill=tk.X, padx=20, pady=10)
-        
-        btn_heatmap = tk.Button(viz_controls, text="Mapa de Calor Fragilidad",
+        btn_heatmap = tk.Button(self.viz_controls, text="Mapa de Calor Fragilidad",
                               command=self.mostrar_mapa_calor,
                               bg='#BD0000', fg='white')
         btn_heatmap.pack(side=tk.LEFT, padx=5)
         
-        btn_connectivity = tk.Button(viz_controls, text="Visualizar Conectividad",
+        btn_connectivity = tk.Button(self.viz_controls, text="Visualizar Conectividad",
                                    command=self.mostrar_conectividad,
                                    bg='#BD0000', fg='white')
         btn_connectivity.pack(side=tk.LEFT, padx=5)
         
-        btn_anisotropy = tk.Button(viz_controls, text="Análisis Anisotropía",
+        btn_anisotropy = tk.Button(self.viz_controls, text="Análisis Anisotropía",
                                  command=self.mostrar_anisotropia,
                                  bg='#BD0000', fg='white')
         btn_anisotropy.pack(side=tk.LEFT, padx=5)
+        
+        # Frame para canvas de matplotlib SEPARADO de los botones
+        self.viz_canvas_frame = tk.Frame(viz_frame, bg='#000000')
+        self.viz_canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
     def setup_results_tab(self):
         """Configura la pestaña de resultados"""
@@ -199,10 +233,17 @@ class AdvancedBoneFragilityAnalyzer:
         export_report_btn.pack(side=tk.LEFT, padx=5)
         
     def on_matrix_change(self, event=None):
-        """Maneja el cambio en la configuración de matriz"""
+        """SOLUCIÓN 3: Maneja el cambio en la configuración de matriz y limpia resultados"""
         matrix_size = self.matrix_var.get()
         size = int(matrix_size.split('x')[0])
         self.matriz_filas = self.matriz_cols = size
+        
+        # Limpiar resultados anteriores para forzar recálculo
+        self.resultados_analisis = None
+        self.progress_label.config(text="Configuración cambiada. Ejecute el análisis nuevamente.")
+        
+        # Limpiar visualizaciones
+        self.limpiar_visualizaciones()
         
     def cargar_datos(self):
         """Carga la imagen y los datos de Excel"""
@@ -225,23 +266,36 @@ class AdvancedBoneFragilityAnalyzer:
                 
             # Cargar imagen
             self.imagen_original = cv2.imread(imagen_path)
+            if self.imagen_original is None:
+                messagebox.showerror("Error", "No se pudo cargar la imagen")
+                return
             self.imagen_original = cv2.cvtColor(self.imagen_original, cv2.COLOR_BGR2RGB)
             
             # Cargar datos de Excel
             self.datos_canales = pd.read_excel(excel_path)
             
             # Validar columnas necesarias
-            required_cols = ['X', 'Y', 'Area']
-            if not all(col in self.datos_canales.columns for col in required_cols):
-                messagebox.showerror("Error", "El archivo Excel debe contener columnas: X, Y, Area")
+            required_cols = ['Center X', 'Center Y', 'Ellipse Area (pixels^2)']
+            # Intentar con nombres alternativos
+            if 'X' in self.datos_canales.columns and 'Y' in self.datos_canales.columns:
+                self.datos_canales['Center X'] = self.datos_canales['X']
+                self.datos_canales['Center Y'] = self.datos_canales['Y']
+            if 'Area' in self.datos_canales.columns:
+                self.datos_canales['Ellipse Area (pixels^2)'] = self.datos_canales['Area']
+                
+            # Verificar que tengamos las columnas necesarias
+            missing_cols = [col for col in required_cols if col not in self.datos_canales.columns]
+            if missing_cols:
+                messagebox.showerror("Error", f"El archivo Excel debe contener columnas: {', '.join(missing_cols)}")
                 return
                 
             messagebox.showinfo("Éxito", f"Datos cargados correctamente:\n"
-                               f"Imagen: {imagen_path}\n"
+                               f"Imagen: {os.path.basename(imagen_path)}\n"
                                f"Canales detectados: {len(self.datos_canales)}")
             
         except Exception as e:
             messagebox.showerror("Error", f"Error al cargar datos: {str(e)}")
+            logging.error(f"Error cargando datos: {e}")
     
     def calcular_densidad_conectividad(self, coordenadas):
         """Calcula la densidad de conectividad para un conjunto de canales"""
@@ -268,7 +322,7 @@ class AdvancedBoneFragilityAnalyzer:
         return suma_inversos / total_pares
     
     def calcular_anisotropia_orientacion(self, coordenadas):
-        """Calcula la anisotropía de orientación usando PCA"""
+        """Calcula la anisotropía de orientación usando análisis estadístico"""
         if len(coordenadas) < 5:
             return 0
         
@@ -302,9 +356,9 @@ class AdvancedBoneFragilityAnalyzer:
             return 0, {}  # Insuficientes canales
         
         # Extraer datos
-        areas = canales_cuadrante['Area'].values
-        coordenadas = list(zip(canales_cuadrante['X'].values, 
-                             canales_cuadrante['Y'].values))
+        areas = canales_cuadrante['Ellipse Area (pixels^2)'].values
+        coordenadas = list(zip(canales_cuadrante['Center X'].values, 
+                             canales_cuadrante['Center Y'].values))
         
         # Actualizar coeficientes desde la UI
         for coef in self.coeficientes:
@@ -343,7 +397,7 @@ class AdvancedBoneFragilityAnalyzer:
         return fragilidad, detalles
     
     def ejecutar_analisis_avanzado(self):
-        """Ejecuta el análisis avanzado de fragilidad"""
+        """SOLUCIÓN 3: Ejecuta el análisis avanzado con actualización forzada"""
         if self.datos_canales is None or self.imagen_original is None:
             messagebox.showerror("Error", "Primero carga una imagen y datos de Excel")
             return
@@ -351,6 +405,9 @@ class AdvancedBoneFragilityAnalyzer:
         try:
             self.progress_label.config(text="Ejecutando análisis avanzado...")
             self.root.update()
+            
+            # Limpiar visualizaciones previas
+            self.limpiar_visualizaciones()
             
             height, width = self.imagen_original.shape[:2]
             cuad_height = height // self.matriz_filas
@@ -370,10 +427,10 @@ class AdvancedBoneFragilityAnalyzer:
                     
                     # Filtrar canales en este cuadrante
                     canales_cuadrante = self.datos_canales[
-                        (self.datos_canales['X'] >= x_min) & 
-                        (self.datos_canales['X'] < x_max) &
-                        (self.datos_canales['Y'] >= y_min) & 
-                        (self.datos_canales['Y'] < y_max)
+                        (self.datos_canales['Center X'] >= x_min) & 
+                        (self.datos_canales['Center X'] < x_max) &
+                        (self.datos_canales['Center Y'] >= y_min) & 
+                        (self.datos_canales['Center Y'] < y_max)
                     ]
                     
                     # Calcular fragilidad
@@ -408,6 +465,16 @@ class AdvancedBoneFragilityAnalyzer:
         except Exception as e:
             messagebox.showerror("Error", f"Error durante el análisis: {str(e)}")
             self.progress_label.config(text="Error en el análisis")
+            logging.error(f"Error en análisis: {e}")
+    
+    def limpiar_visualizaciones(self):
+        """SOLUCIÓN 2 y 3: Limpia SOLO los gráficos, los botones están separados"""
+        try:
+            # Ahora es seguro limpiar todo el canvas_frame porque los botones están separados
+            for widget in self.viz_canvas_frame.winfo_children():
+                widget.destroy()
+        except Exception as e:
+            logging.error(f"Error limpiando visualizaciones: {e}")
     
     def identificar_zonas_criticas(self):
         """Identifica cuadrantes más frágiles y patrones"""
@@ -429,24 +496,34 @@ class AdvancedBoneFragilityAnalyzer:
         self.resultados_analisis['top_fragiles'] = validos[:3]
         
         # Cuadrante más frágil
-        mas_fragil = validos[0]
-        self.resultados_analisis['mas_fragil'] = mas_fragil
+        if validos:
+            mas_fragil = validos[0]
+            self.resultados_analisis['mas_fragil'] = mas_fragil
         
         # Análisis de conectividad alta
-        alta_conectividad = [r for r in validos 
-                           if r['densidad_conectividad'] > np.percentile(
-                               [r['densidad_conectividad'] for r in validos], 75)]
-        self.resultados_analisis['alta_conectividad'] = alta_conectividad
+        if validos:
+            conectividades = [r['densidad_conectividad'] for r in validos]
+            percentil_75 = np.percentile(conectividades, 75)
+            alta_conectividad = [r for r in validos if r['densidad_conectividad'] > percentil_75]
+            self.resultados_analisis['alta_conectividad'] = alta_conectividad
         
         # Análisis de anisotropía alta
-        alta_anisotropia = [r for r in validos 
-                          if r['anisotropia'] > np.percentile(
-                              [r['anisotropia'] for r in validos], 75)]
-        self.resultados_analisis['alta_anisotropia'] = alta_anisotropia
+        if validos:
+            anisotropias = [r['anisotropia'] for r in validos]
+            percentil_75 = np.percentile(anisotropias, 75)
+            alta_anisotropia = [r for r in validos if r['anisotropia'] > percentil_75]
+            self.resultados_analisis['alta_anisotropia'] = alta_anisotropia
     
     def mostrar_resultados_texto(self):
         """Muestra los resultados en formato texto"""
         if not self.resultados_analisis:
+            return
+        
+        self.results_text.delete(1.0, tk.END)
+        
+        # Verificar que tenemos datos válidos
+        if 'mas_fragil' not in self.resultados_analisis:
+            self.results_text.insert(tk.END, "No se pudieron procesar suficientes cuadrantes para análisis.\n")
             return
         
         texto = f"""
@@ -498,18 +575,16 @@ Desviación estándar: {np.std(fragilidades):.2f}
 Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_cols}
 """
         
-        self.results_text.delete(1.0, tk.END)
-        self.results_text.insert(1.0, texto)
+        self.results_text.insert(tk.END, texto)
     
     def mostrar_mapa_calor(self):
-        """Muestra un mapa de calor de la fragilidad"""
+        """SOLUCIÓN 2: Muestra un mapa de calor de la fragilidad conservando botones"""
         if not self.resultados_analisis:
             messagebox.showwarning("Advertencia", "Primero ejecuta el análisis")
             return
         
-        # Limpiar canvas anterior
-        for widget in self.viz_canvas_frame.winfo_children():
-            widget.destroy()
+        # Limpiar canvas anterior pero mantener botones
+        self.limpiar_visualizaciones()
         
         # Crear figura
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -540,6 +615,186 @@ Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_c
         ax2.set_ylabel('Frecuencia', color='white')
         ax2.set_facecolor('black')
         ax2.tick_params(colors='white')
+        
+        # Integrar en tkinter
+        canvas = FigureCanvasTkAgg(fig, self.viz_canvas_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    
+    def mostrar_conectividad(self):
+        """SOLUCIÓN 2: Visualiza la densidad de conectividad conservando botones"""
+        if not self.resultados_analisis:
+            messagebox.showwarning("Advertencia", "Primero ejecuta el análisis")
+            return
+        
+        # Limpiar canvas anterior pero mantener botones
+        self.limpiar_visualizaciones()
+        
+        # Crear matriz de conectividad
+        matriz_conectividad = np.zeros((self.matriz_filas, self.matriz_cols))
+        for resultado in self.resultados_analisis['cuadrantes']:
+            if resultado['fragilidad'] > 0:
+                matriz_conectividad[resultado['fila'], resultado['columna']] = resultado['densidad_conectividad']
+        
+        # Crear figura
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        fig.patch.set_facecolor('black')
+        
+        # Mapa de conectividad
+        im1 = ax1.imshow(matriz_conectividad, cmap='Blues', interpolation='nearest')
+        ax1.set_title('Densidad de Conectividad', color='white', fontsize=14)
+        ax1.set_facecolor('black')
+        plt.colorbar(im1, ax=ax1)
+        
+        # Scatter plot: Conectividad vs Fragilidad
+        conectividades = [r['densidad_conectividad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        fragilidades = [r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        
+        ax2.scatter(conectividades, fragilidades, c='cyan', alpha=0.7)
+        ax2.set_xlabel('Densidad de Conectividad', color='white')
+        ax2.set_ylabel('Fragilidad', color='white')
+        ax2.set_title('Correlación Conectividad-Fragilidad', color='white', fontsize=14)
+        ax2.set_facecolor('black')
+        ax2.tick_params(colors='white')
+        
+        # Línea de tendencia
+        if len(conectividades) > 1:
+            z = np.polyfit(conectividades, fragilidades, 1)
+            p = np.poly1d(z)
+            ax2.plot(sorted(conectividades), p(sorted(conectividades)), "r--", alpha=0.8)
+        
+        plt.tight_layout()
+        
+        # Integrar en tkinter
+        canvas = FigureCanvasTkAgg(fig, self.viz_canvas_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    
+    def mostrar_anisotropia(self):
+        """SOLUCIÓN 2: Visualiza el análisis de anisotropía conservando botones"""
+        if not self.resultados_analisis:
+            messagebox.showwarning("Advertencia", "Primero ejecuta el análisis")
+            return
+        
+        # Limpiar canvas anterior pero mantener botones
+        self.limpiar_visualizaciones()
+        
+        # Crear matriz de anisotropía
+        matriz_anisotropia = np.zeros((self.matriz_filas, self.matriz_cols))
+        for resultado in self.resultados_analisis['cuadrantes']:
+            if resultado['fragilidad'] > 0:
+                matriz_anisotropia[resultado['fila'], resultado['columna']] = resultado['anisotropia']
+        
+        # Crear figura
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(12, 10))
+        fig.patch.set_facecolor('black')
+        
+        # Mapa de anisotropía
+        im1 = ax1.imshow(matriz_anisotropia, cmap='viridis', interpolation='nearest')
+        ax1.set_title('Anisotropía de Orientación', color='white', fontsize=12)
+        ax1.set_facecolor('black')
+        plt.colorbar(im1, ax=ax1)
+        
+        # Scatter plot: Anisotropía vs Fragilidad
+        anisotropias = [r['anisotropia'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        fragilidades = [r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        
+        ax2.scatter(anisotropias, fragilidades, c='yellow', alpha=0.7)
+        ax2.set_xlabel('Anisotropía', color='white')
+        ax2.set_ylabel('Fragilidad', color='white')
+        ax2.set_title('Correlación Anisotropía-Fragilidad', color='white', fontsize=12)
+        ax2.set_facecolor('black')
+        ax2.tick_params(colors='white')
+        
+        # Distribución de factores de tamaño
+        factores_tamano = [r['factor_tamano'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        ax3.hist(factores_tamano, bins=12, color='orange', alpha=0.7, edgecolor='white')
+        ax3.set_xlabel('Factor de Tamaño', color='white')
+        ax3.set_ylabel('Frecuencia', color='white')
+        ax3.set_title('Distribución Factor de Tamaño', color='white', fontsize=12)
+        ax3.set_facecolor('black')
+        ax3.tick_params(colors='white')
+        
+        # Análisis multivariable
+        areas_prom = [r['area_promedio'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        numero_canales = [r['numero_canales'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        
+        scatter = ax4.scatter(areas_prom, numero_canales, c=fragilidades, 
+                            cmap='Reds', alpha=0.7, s=60)
+        ax4.set_xlabel('Área Promedio', color='white')
+        ax4.set_ylabel('Número de Canales', color='white')
+        ax4.set_title('Área vs Número (Color = Fragilidad)', color='white', fontsize=12)
+        ax4.set_facecolor('black')
+        ax4.tick_params(colors='white')
+        plt.colorbar(scatter, ax=ax4)
+        
+        plt.tight_layout()
+        
+        # Integrar en tkinter
+        canvas = FigureCanvasTkAgg(fig, self.viz_canvas_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        
+        plt.colorbar(im1, ax=ax1)
+        
+        # Histograma de distribución
+        fragilidades = [r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        ax2.hist(fragilidades, bins=15, color='red', alpha=0.7, edgecolor='white')
+        ax2.set_title('Distribución de Fragilidad', color='white', fontsize=14)
+        ax2.set_xlabel('Índice de Fragilidad', color='white')
+        ax2.set_ylabel('Frecuencia', color='white')
+        ax2.set_facecolor('black')
+        ax2.tick_params(colors='white')
+        
+        plt.tight_layout()
+        
+        # Integrar en tkinter
+        canvas = FigureCanvasTkAgg(fig, self.viz_canvas_frame)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+    
+    def mostrar_conectividad(self):
+        """Visualiza la densidad de conectividad"""
+        if not self.resultados_analisis:
+            messagebox.showwarning("Advertencia", "Primero ejecuta el análisis")
+            return
+        
+        # Limpiar canvas anterior
+        for widget in self.viz_canvas_frame.winfo_children():
+            widget.destroy()
+        
+        # Crear matriz de conectividad
+        matriz_conectividad = np.zeros((self.matriz_filas, self.matriz_cols))
+        for resultado in self.resultados_analisis['cuadrantes']:
+            if resultado['fragilidad'] > 0:
+                matriz_conectividad[resultado['fila'], resultado['columna']] = resultado['densidad_conectividad']
+        
+        # Crear figura
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+        fig.patch.set_facecolor('black')
+        
+        # Mapa de conectividad
+        im1 = ax1.imshow(matriz_conectividad, cmap='Blues', interpolation='nearest')
+        ax1.set_title('Densidad de Conectividad', color='white', fontsize=14)
+        ax1.set_facecolor('black')
+        plt.colorbar(im1, ax=ax1)
+        
+        # Scatter plot: Conectividad vs Fragilidad
+        conectividades = [r['densidad_conectividad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        fragilidades = [r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
+        
+        ax2.scatter(conectividades, fragilidades, c='cyan', alpha=0.7)
+        ax2.set_xlabel('Densidad de Conectividad', color='white')
+        ax2.set_ylabel('Fragilidad', color='white')
+        ax2.set_title('Correlación Conectividad-Fragilidad', color='white', fontsize=14)
+        ax2.set_facecolor('black')
+        ax2.tick_params(colors='white')
+        
+        # Línea de tendencia
+        if len(conectividades) > 1:
+            z = np.polyfit(conectividades, fragilidades, 1)
+            p = np.poly1d(z)
+            ax2.plot(sorted(conectividades), p(sorted(conectividades)), "r--", alpha=0.8)
         
         plt.tight_layout()
         
@@ -621,14 +876,9 @@ Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_c
             return
         
         try:
-            # Seleccionar archivo de destino
-            filename = filedialog.asksaveasfilename(
-                defaultextension=".xlsx",
-                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
-            )
-            
-            if not filename:
-                return
+            # Crear nombre de archivo con timestamp directamente en breaking_app/
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = self.base_dir / f"analisis_fragilidad_{timestamp}.xlsx"
             
             # Crear DataFrame con todos los resultados
             df_resultados = pd.DataFrame(self.resultados_analisis['cuadrantes'])
@@ -639,30 +889,32 @@ Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_c
                 df_resultados.to_excel(writer, sheet_name='Análisis Completo', index=False)
                 
                 # Hoja con resumen ejecutivo
-                resumen_data = {
-                    'Métrica': [
-                        'Cuadrante más frágil',
-                        'Fragilidad máxima',
-                        'Fragilidad promedio',
-                        'Desviación estándar',
-                        'Cuadrantes analizados',
-                        'Fecha de análisis'
-                    ],
-                    'Valor': [
-                        self.resultados_analisis['mas_fragil']['cuadrante'],
-                        f"{self.resultados_analisis['mas_fragil']['fragilidad']:.2f}",
-                        f"{np.mean([r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]):.2f}",
-                        f"{np.std([r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]):.2f}",
-                        len([r for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]),
-                        self.resultados_analisis['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
-                    ]
-                }
-                df_resumen = pd.DataFrame(resumen_data)
-                df_resumen.to_excel(writer, sheet_name='Resumen Ejecutivo', index=False)
+                if 'mas_fragil' in self.resultados_analisis:
+                    resumen_data = {
+                        'Métrica': [
+                            'Cuadrante más frágil',
+                            'Fragilidad máxima',
+                            'Fragilidad promedio',
+                            'Desviación estándar',
+                            'Cuadrantes analizados',
+                            'Fecha de análisis'
+                        ],
+                        'Valor': [
+                            self.resultados_analisis['mas_fragil']['cuadrante'],
+                            f"{self.resultados_analisis['mas_fragil']['fragilidad']:.2f}",
+                            f"{np.mean([r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]):.2f}",
+                            f"{np.std([r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]):.2f}",
+                            len([r for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]),
+                            self.resultados_analisis['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+                        ]
+                    }
+                    df_resumen = pd.DataFrame(resumen_data)
+                    df_resumen.to_excel(writer, sheet_name='Resumen Ejecutivo', index=False)
                 
                 # Hoja con top frágiles
-                df_top = pd.DataFrame(self.resultados_analisis['top_fragiles'])
-                df_top.to_excel(writer, sheet_name='Top Frágiles', index=False)
+                if 'top_fragiles' in self.resultados_analisis:
+                    df_top = pd.DataFrame(self.resultados_analisis['top_fragiles'])
+                    df_top.to_excel(writer, sheet_name='Top Frágiles', index=False)
                 
                 # Hoja con configuración utilizada
                 config_data = {
@@ -689,6 +941,7 @@ Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_c
             
         except Exception as e:
             messagebox.showerror("Error", f"Error al exportar: {str(e)}")
+            logging.error(f"Error exportando Excel: {e}")
     
     def generar_informe(self):
         """Genera un informe completo en HTML"""
@@ -697,57 +950,69 @@ Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_c
             return
         
         try:
-            # Seleccionar directorio de destino
-            directorio = filedialog.askdirectory(title="Seleccionar directorio para el informe")
-            if not directorio:
-                return
-            
+            # Crear directorio para el informe directamente en breaking_app/
             timestamp = self.resultados_analisis['timestamp'].strftime('%Y%m%d_%H%M%S')
-            filename = os.path.join(directorio, f"informe_fragilidad_{timestamp}.html")
+            informe_dir = self.base_dir / f"informe_fragilidad_{timestamp}"
+            informe_dir.mkdir(exist_ok=True)
             
             # Generar visualizaciones y guardarlas
-            self.guardar_visualizaciones(directorio, timestamp)
+            self.guardar_visualizaciones(informe_dir, timestamp)
             
             # Crear HTML
             html_content = self.crear_html_informe(timestamp)
             
+            filename = informe_dir / "informe_fragilidad.html"
             with open(filename, 'w', encoding='utf-8') as f:
                 f.write(html_content)
             
-            messagebox.showinfo("Éxito", f"Informe completo generado en:\n{directorio}")
+            messagebox.showinfo("Éxito", f"Informe completo generado en:\n{informe_dir}")
+            
+            # Intentar abrir el archivo
+            try:
+                import webbrowser
+                webbrowser.open(str(filename))
+            except:
+                pass
             
         except Exception as e:
             messagebox.showerror("Error", f"Error al generar informe: {str(e)}")
+            logging.error(f"Error generando informe: {e}")
     
     def guardar_visualizaciones(self, directorio, timestamp):
         """Guarda las visualizaciones como imágenes"""
-        # Mapa de calor
-        fig, ax = plt.subplots(figsize=(8, 6))
-        fig.patch.set_facecolor('white')
-        im = ax.imshow(self.resultados_analisis['matriz_fragilidad'], cmap='Reds')
-        ax.set_title('Mapa de Fragilidad Ósea')
-        plt.colorbar(im)
-        plt.savefig(os.path.join(directorio, f'mapa_fragilidad_{timestamp}.png'), 
-                   dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        # Conectividad
-        matriz_conectividad = np.zeros((self.matriz_filas, self.matriz_cols))
-        for resultado in self.resultados_analisis['cuadrantes']:
-            if resultado['fragilidad'] > 0:
-                matriz_conectividad[resultado['fila'], resultado['columna']] = resultado['densidad_conectividad']
-        
-        fig, ax = plt.subplots(figsize=(8, 6))
-        fig.patch.set_facecolor('white')
-        im = ax.imshow(matriz_conectividad, cmap='Blues')
-        ax.set_title('Densidad de Conectividad')
-        plt.colorbar(im)
-        plt.savefig(os.path.join(directorio, f'conectividad_{timestamp}.png'), 
-                   dpi=300, bbox_inches='tight')
-        plt.close()
+        try:
+            # Mapa de calor
+            fig, ax = plt.subplots(figsize=(8, 6))
+            fig.patch.set_facecolor('white')
+            im = ax.imshow(self.resultados_analisis['matriz_fragilidad'], cmap='Reds')
+            ax.set_title('Mapa de Fragilidad Ósea')
+            plt.colorbar(im)
+            plt.savefig(directorio / f'mapa_fragilidad_{timestamp}.png', 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
+            
+            # Conectividad
+            matriz_conectividad = np.zeros((self.matriz_filas, self.matriz_cols))
+            for resultado in self.resultados_analisis['cuadrantes']:
+                if resultado['fragilidad'] > 0:
+                    matriz_conectividad[resultado['fila'], resultado['columna']] = resultado['densidad_conectividad']
+            
+            fig, ax = plt.subplots(figsize=(8, 6))
+            fig.patch.set_facecolor('white')
+            im = ax.imshow(matriz_conectividad, cmap='Blues')
+            ax.set_title('Densidad de Conectividad')
+            plt.colorbar(im)
+            plt.savefig(directorio / f'conectividad_{timestamp}.png', 
+                       dpi=300, bbox_inches='tight')
+            plt.close()
+        except Exception as e:
+            logging.error(f"Error guardando visualizaciones: {e}")
     
     def crear_html_informe(self, timestamp):
         """Crea el contenido HTML del informe"""
+        if 'mas_fragil' not in self.resultados_analisis:
+            return "<html><body><h1>Error: No hay datos suficientes para generar el informe</h1></body></html>"
+            
         mas_fragil = self.resultados_analisis['mas_fragil']
         fragilidades = [r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
         
@@ -846,7 +1111,7 @@ Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_c
                 <td>{cuad['densidad_conectividad']:.6f}</td>
             </tr>"""
         
-        html += """
+        html += f"""
         </table>
     </div>
 
@@ -854,17 +1119,17 @@ Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_c
         <h2>Visualizaciones</h2>
         <div class="image-container">
             <h3>Mapa de Fragilidad</h3>
-            <img src="mapa_fragilidad_{}.png" alt="Mapa de Fragilidad" style="max-width: 100%; height: auto;">
+            <img src="mapa_fragilidad_{timestamp}.png" alt="Mapa de Fragilidad" style="max-width: 100%; height: auto;">
         </div>
         <div class="image-container">
             <h3>Densidad de Conectividad</h3>
-            <img src="conectividad_{}.png" alt="Densidad de Conectividad" style="max-width: 100%; height: auto;">
+            <img src="conectividad_{timestamp}.png" alt="Densidad de Conectividad" style="max-width: 100%; height: auto;">
         </div>
     </div>
 
     <div class="section">
         <h2>Interpretación Biomecánica</h2>
-        <h3>Factores Críticos Identificados:</h3>""".format(timestamp, timestamp)
+        <h3>Factores Críticos Identificados:</h3>"""
         
         # Análisis de factores críticos
         if self.resultados_analisis.get('alta_conectividad'):
@@ -902,59 +1167,35 @@ Cuadrantes analizados: {len(fragilidades)} de {self.matriz_filas * self.matriz_c
 
 def main():
     """Función principal para ejecutar la aplicación"""
+    # Configurar logging en breaking_app/ directamente
+    try:
+        # Detectar directorio del proyecto
+        current_dir = Path(__file__).parent
+        project_root = current_dir.parent.parent
+        log_dir = project_root / "data" / "sample_results" / "breaking_app"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = log_dir / "fragility_app.log"
+    except:
+        # Fallback
+        log_file = "fragility_app.log"
+    
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
+    )
+    
     root = tk.Tk()
     app = AdvancedBoneFragilityAnalyzer(root)
-    root.mainloop()
+    
+    try:
+        root.mainloop()
+    except Exception as e:
+        logging.error(f"Error en aplicación principal: {e}")
+        messagebox.showerror("Error Fatal", f"Error inesperado: {e}")
 
 if __name__ == "__main__":
-    main()layout()
-        
-        # Integrar en tkinter
-        canvas = FigureCanvasTkAgg(fig, self.viz_canvas_frame)
-        canvas.draw()
-        canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-    
-    def mostrar_conectividad(self):
-        """Visualiza la densidad de conectividad"""
-        if not self.resultados_analisis:
-            messagebox.showwarning("Advertencia", "Primero ejecuta el análisis")
-            return
-        
-        # Limpiar canvas anterior
-        for widget in self.viz_canvas_frame.winfo_children():
-            widget.destroy()
-        
-        # Crear matriz de conectividad
-        matriz_conectividad = np.zeros((self.matriz_filas, self.matriz_cols))
-        for resultado in self.resultados_analisis['cuadrantes']:
-            if resultado['fragilidad'] > 0:
-                matriz_conectividad[resultado['fila'], resultado['columna']] = resultado['densidad_conectividad']
-        
-        # Crear figura
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
-        fig.patch.set_facecolor('black')
-        
-        # Mapa de conectividad
-        im1 = ax1.imshow(matriz_conectividad, cmap='Blues', interpolation='nearest')
-        ax1.set_title('Densidad de Conectividad', color='white', fontsize=14)
-        ax1.set_facecolor('black')
-        plt.colorbar(im1, ax=ax1)
-        
-        # Scatter plot: Conectividad vs Fragilidad
-        conectividades = [r['densidad_conectividad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
-        fragilidades = [r['fragilidad'] for r in self.resultados_analisis['cuadrantes'] if r['fragilidad'] > 0]
-        
-        ax2.scatter(conectividades, fragilidades, c='cyan', alpha=0.7)
-        ax2.set_xlabel('Densidad de Conectividad', color='white')
-        ax2.set_ylabel('Fragilidad', color='white')
-        ax2.set_title('Correlación Conectividad-Fragilidad', color='white', fontsize=14)
-        ax2.set_facecolor('black')
-        ax2.tick_params(colors='white')
-        
-        # Línea de tendencia
-        if len(conectividades) > 1:
-            z = np.polyfit(conectividades, fragilidades, 1)
-            p = np.poly1d(z)
-            ax2.plot(sorted(conectividades), p(sorted(conectividades)), "r--", alpha=0.8)
-        
-        plt.tight_
+    main()
