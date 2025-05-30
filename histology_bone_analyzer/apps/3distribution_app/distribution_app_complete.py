@@ -90,6 +90,74 @@ class FemurOsteonaDistributorAdvanced:
         
         # Calcular inicialmente
         self.calculate()
+
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    
+    # ============================================================================
+    # FUNCIONES DE CIERRE CORRECTO DE LA APLICACIÓN
+    # ============================================================================
+
+    def on_closing(self):
+        """
+        Maneja el cierre correcto de la aplicación Distribution App.
+        Libera recursos y permite que la terminal vuelva a estar disponible.
+        """
+        try:
+            # Confirmar cierre si hay trabajo en progreso
+            if hasattr(self, 'distribution_data') and self.distribution_data:
+                if messagebox.askokcancel("Salir", 
+                                        "¿Está seguro de que desea salir?\n"
+                                        "Los datos no guardados se perderán."):
+                    self._cleanup_and_exit()
+                else:
+                    return  # Usuario canceló el cierre
+            else:
+                self._cleanup_and_exit()
+        except Exception as e:
+            print(f"Error durante el cierre: {e}")
+            # Forzar cierre incluso si hay error
+            self._force_exit()
+
+    def _cleanup_and_exit(self):
+        """
+        Limpia recursos y cierra la aplicación correctamente.
+        """
+        try:
+            # Limpiar figuras de matplotlib para evitar warnings
+            if hasattr(self, 'figure'):
+                plt.close(self.figure)
+            
+            # Limpiar cualquier ventana adicional abierta
+            for widget in self.root.winfo_children():
+                if isinstance(widget, tk.Toplevel):
+                    widget.destroy()
+            
+            # Cerrar ventana principal
+            self.root.quit()      # Sale del mainloop
+            self.root.destroy()   # Destruye la ventana
+            
+            print("Distribution App cerrada correctamente.")
+            
+        except Exception as e:
+            print(f"Error en cleanup: {e}")
+            self._force_exit()
+
+    def _force_exit(self):
+        """
+        Fuerza el cierre de la aplicación en caso de error.
+        """
+        try:
+            self.root.quit()
+        except:
+            pass
+        try:
+            self.root.destroy()
+        except:
+            pass
+        
+        # Como último recurso, usar sys.exit()
+        import sys
+        sys.exit(0)
     
     def ensure_directories(self):
         """Asegura que existan los directorios necesarios"""
@@ -1428,13 +1496,6 @@ def main():
     """Función principal para ejecutar la aplicación"""
     root = tk.Tk()
     app = FemurOsteonaDistributorAdvanced(root)
-    
-    # Configurar el cierre de la aplicación
-    def on_closing():
-        if messagebox.askokcancel("Salir", "¿Está seguro de que desea salir?"):
-            root.destroy()
-    
-    root.protocol("WM_DELETE_WINDOW", on_closing)
     
     # Centrar la ventana en la pantalla
     root.update_idletasks()
